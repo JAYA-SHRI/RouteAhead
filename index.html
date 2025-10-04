@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteAhead-Predictive Commuter Planner🗺</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            /* 🛑 NEW: Soft, professional background gradient */
+            background: linear-gradient(135deg, #f0f4f8, #e4e9f0);
+            transition: all 0.5s ease-in-out; 
+        }
+        
+        /* Keyframe for the urgent pulse effect */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .animate-pulse-custom {
+            animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .time-display {
+            min-height: 12rem;
+            transition: all 0.6s cubic-bezier(0.25, 0.8, 0.25, 1); 
+            transform: perspective(1px) translateZ(0); 
+        }
+        
+        /* Main Settings Panel Card Style Enhancement */
+        #app-container > div:last-child {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05); /* Softer overall card shadow */
+        }
+        
+        .input-card {
+            transition: all 0.3s ease-out;
+            /* 🛑 Subtle lift effect */
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        .input-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Button Hover Effect */
+        button:not(#geo-button):not(.delete-trip) {
+            transition: all 0.2s ease-out;
+        }
+        button:not(#geo-button):not(.delete-trip):hover {
+            transform: scale(1.01);
+            filter: brightness(1.05);
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8 flex flex-col items-center">
+
+    <div id="app-container" class="w-full max-w-lg">
+        <h1 class="text-4xl font-extrabold text-gray-900 mb-2 text-center">Predictive Commuter Planner</h1>
+        <p class="text-sm font-medium text-gray-500 mb-8 text-center">Automatically calculates your optimal leave time.</p>
+
+        <!-- Real-Time Current Clock -->
+        <div class="text-center mb-6">
+            <p class="text-gray-600 text-sm font-medium">Current Local Time</p>
+            <p id="current-time-display" class="text-5xl font-extrabold text-gray-800 tracking-tight"></p>
+        </div>
+
+
+        <!-- Dynamic Time Display Card -->
+        <div id="time-display" class="time-display w-full p-8 rounded-xl text-white shadow-2xl mb-8 flex flex-col justify-center items-center bg-gray-500 shadow-gray-400/50">
+            <div class="flex items-center space-x-4 mb-4">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <p id="status-message" class="text-2xl font-semibold">Loading settings...</p>
+            </div>
+            
+            <p class="text-sm font-light uppercase">Leave Home By:</p>
+            <p id="leave-time" class="text-7xl font-extrabold tracking-tight">--:--</p>
+            
+            <div class="mt-4 text-xs font-medium">
+                <p>Scheduled Departure: <span id="scheduled-departure-display">08:00</span></p>
+                <p>Actual Transit Departure: <span id="actual-departure-display">--:--</span></p>
+                <p id="day-of-week-display" class="font-bold mt-1 text-sm"></p>
+            </div>
+        </div>
+        
+        <!-- Settings Panel -->
+        <div class="w-full bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Daily Commute Settings</h2>
+            
+            <button 
+                id="live-update-button"
+                class="w-full mb-6 py-3 px-4 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150"
+            >
+                Get Instant Delay & Traffic Update
+            </button>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <!-- TRANSPORT TYPE -->
+                <div class="input-card p-4 border border-gray-300 rounded-lg">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Transport Type</label>
+                    <select id="transport-type" class="w-full px-2 py-2 border-b focus:border-indigo-500 outline-none text-lg bg-white">
+                        <option value="Train">Train</option>
+                        <option value="Bus">Bus</option>
+                        <option value="Flight">Flight</option>
+                        <option value="Car">Car</option>
+                    </select>
+                </div>
+
+                <!-- Departure Day -->
+                <div class="input-card p-4 border border-gray-300 rounded-lg">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Departure Day</label>
+                    <select id="departure-day" class="w-full px-2 py-2 border-b focus:border-indigo-500 outline-none text-lg bg-white">
+                        <option value="0">Today</option>
+                        <option value="1">Tomorrow</option>
+                        <option value="2">Day After</option>
+                    </select>
+                </div>
+                
+                <!-- Target Time -->
+                <div class="input-card p-4 border border-gray-300 rounded-lg">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Target Time</label>
+                    <input type="time" id="scheduled-departure" value="08:00" class="w-full px-2 py-1 border-b focus:border-indigo-500 outline-none text-lg" />
+                </div>
+                
+                <!-- Travel Time -->
+                <div class="input-card p-4 border border-gray-300 rounded-lg">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Base Travel Time (Minutes)</label>
+                    <input type="number" id="travel-time" value="30" min="1" class="w-full px-2 py-1 border-b focus:border-indigo-500 outline-none text-lg" />
+                </div>
+
+                <!-- Buffer Time -->
+                <div class="input-card p-4 border border-gray-300 rounded-lg">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Safety Buffer (Minutes)</label>
+                    <input type="number" id="buffer-time" value="10" min="0" class="w-full px-2 py-1 border-b focus:border-indigo-500 outline-none text-lg" />
+                </div>
+                
+                <!-- Route Distance (KM) -->
+                <div class="input-card p-4 border border-gray-300 rounded-lg">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Route Distance (KM)</label>
+                    <input type="number" id="route-distance" value="20" min="0.1" step="0.1" class="w-full px-2 py-1 border-b focus:border-indigo-500 outline-none text-lg" />
+                </div>
+            </div>
+            
+            <!-- ORIGIN SETTINGS -->
+            <div class="mt-8 border-t border-gray-200 pt-6">
+                <h3 class="text-xl font-semibold text-gray-800 mb-3">Location Management</h3>
+
+                <!-- ORIGIN SELECTION DROPDOWN -->
+                <div class="input-card p-4 border border-gray-300 rounded-lg mb-4">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Origin Location</label>
+                    <select id="origin-select" class="w-full px-2 py-2 border-b focus:border-indigo-500 outline-none text-lg bg-white"></select>
+                </div>
+
+                <!-- ORIGIN VALUE INPUT (Hidden, holds the actual location value for Map link) -->
+                <input type="hidden" id="origin-input" value="Home Address">
+
+                <!-- LIVE GPS BUTTON -->
+                <div class="flex items-center justify-between mb-4 px-1">
+                    <button id="geo-button" class="px-3 py-2 text-sm rounded-lg bg-blue-500 text-white transition duration-150 hover:bg-blue-600">
+                        Get Current GPS
+                    </button>
+                    <p id="geo-status" class="text-xs text-gray-500">Click to update your current GPS coordinates.</p>
+                </div>
+
+                <!-- SAVE NEW ORIGIN -->
+                <div class="p-4 border border-gray-300 rounded-lg bg-gray-50">
+                    <h4 class="font-semibold text-sm mb-3">Save New Origin</h4>
+                    <div class="flex gap-2 flex-wrap">
+                        <input type="text" id="new-origin-name" placeholder="Name (e.g., Hotel NYC)" class="p-2 border rounded text-sm flex-grow" required>
+                        <input type="text" id="new-origin-value" placeholder="Address or GPS Coords" class="p-2 border rounded text-sm flex-grow" required>
+                        <button id="add-origin-button" class="py-2 px-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">Save</button>
+                    </div>
+                </div>
+
+                <!-- DESTINATION SETTINGS -->
+                <div class="mt-8 border-t border-gray-200 pt-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-3">Destination Management</h3>
+
+                    <!-- DESTINATION SELECTION DROPDOWN -->
+                    <div class="input-card p-4 border border-gray-300 rounded-lg mb-4">
+                        <label class="text-sm font-medium text-gray-700 block mb-1">Destination Location</label>
+                        <select id="destination-select" class="w-full px-2 py-2 border-b focus:border-indigo-500 outline-none text-lg bg-white"></select>
+                    </div>
+
+                    <!-- DESTINATION VALUE INPUT (Hidden, holds the actual location value for Map link) -->
+                    <input type="hidden" id="destination-input" value="Office">
+
+                    <!-- SAVE NEW DESTINATION -->
+                    <div class="p-4 border border-gray-300 rounded-lg bg-gray-50">
+                        <h4 class="font-semibold text-sm mb-3">Save New Destination</h4>
+                        <div class="flex gap-2 flex-wrap">
+                            <input type="text" id="new-destination-name" placeholder="Name (e.g., Main Office)" class="p-2 border rounded text-sm flex-grow" required>
+                            <input type="text" id="new-destination-value" placeholder="Address or GPS Coords" class="p-2 border rounded text-sm flex-grow" required>
+                            <button id="add-destination-button" class="py-2 px-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Google Maps Route Link -->
+            <div class="mt-6 border-t border-gray-200 pt-4 text-center">
+                <p class="text-sm font-medium text-gray-700 block mb-2">Review Your Route & Traffic</p>
+                <a id="maps-link" 
+                   href="#" 
+                   target="_blank" 
+                   class="inline-flex items-center justify-center bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md">
+                   <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.828 0L6.343 16.657a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                   View Route on Google Maps
+                </a>
+            </div>
+            
+            <!-- Live Status Displays -->
+            <div class="mt-6 p-4 border-t border-gray-200 grid grid-cols-2 gap-4">
+                <div class="text-center">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Simulated Traffic Factor</label>
+                    <div id="traffic-factor-display" class="px-3 py-2 border-2 border-dashed border-orange-300 rounded-lg text-2xl font-bold text-orange-600">
+                       0%
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Total Travel Time Needed</label>
+                    <div id="total-travel-time" class="px-3 py-2 border-2 border-dashed border-gray-400 rounded-lg text-2xl font-bold text-gray-800">
+                       30 min
+                    </div>
+                </div>
+                
+                <div class="col-span-2 mt-4 text-center">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Transit Delay</label>
+                    <div id="transit-delay-display" class="w-full px-3 py-2 border-2 border-dashed border-red-300 rounded-lg text-2xl font-bold text-red-600">
+                        +0 min
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Status updates manually via button.
+                    </p>
+                </div>
+                
+                <!-- Route Distance Display -->
+                <div class="col-span-2 text-center mt-4">
+                    <label class="text-sm font-medium text-gray-700 block mb-1">Route Distance</label>
+                    <div id="route-distance-display" class="px-3 py-2 border-2 border-dashed border-indigo-300 rounded-lg text-2xl font-bold text-indigo-600">
+                       20 KM
+                    </div>
+                </div>
+            </div>
+
+            <!-- Future Trip Manager UI -->
+            <div class="mt-8 border-t border-gray-200 pt-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Future Trip Manager</h3>
+                <div id="future-trips-list" class="space-y-3 mb-4">
+                    <!-- Trips will be rendered here -->
+                    <p id="no-trips-message" class="text-gray-500 text-sm">No future trips saved.</p>
+                </div>
+                
+                <!-- Form to Add New Trip -->
+                <div class="p-4 bg-gray-100 rounded-lg">
+                    <h4 class="font-semibold mb-2">Add New Trip</h4>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="date" id="new-trip-date" class="p-2 border rounded" required>
+                        <input type="time" id="new-trip-time" class="p-2 border rounded" value="10:00" required>
+                        <select id="new-trip-transport" class="p-2 border rounded">
+                            <option value="Flight">Flight</option>
+                            <option value="Train">Train</option>
+                            <option value="Bus">Bus</option>
+                        </select>
+                        <input type="text" id="new-trip-destination" placeholder="Destination (e.g., London)" class="p-2 border rounded col-span-2" required>
+                    </div>
+                    <button id="add-trip-button" class="w-full mt-3 py-2 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition">Save Trip</button>
+                </div>
+            </div>
+        </div>
+        
+        <p class="text-xs text-gray-400 mt-6 text-center">All settings automatically saved to your browser.</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            let settings = {};
+            let savedOrigins = [];
+            let savedDestinations = []; 
+            const STORAGE_KEY = 'commuter_planner_settings';
+            const FUTURE_TRIPS_KEY = 'future_trips_data';
+            const ORIGINS_KEY = 'saved_origins_data';
+            const DESTINATIONS_KEY = 'saved_destinations_data';
+            let autoUpdateInterval = null;
+            let clockInterval = null; 
+
+            // --- Element Mappers ---
+            const els = {
+                // Settings Inputs
+                transportType: document.getElementById('transport-type'),
+                scheduledDeparture: document.getElementById('scheduled-departure'),
+                travelTime: document.getElementById('travel-time'),
+                bufferTime: document.getElementById('buffer-time'),
+                routeDistance: document.getElementById('route-distance'), 
+                originSelect: document.getElementById('origin-select'),
+                originInput: document.getElementById('origin-input'),
+                destinationSelect: document.getElementById('destination-select'),
+                destinationInput: document.getElementById('destination-input'), 
+                departureDay: document.getElementById('departure-day'),
+
+                // Display Outputs
+                timeDisplay: document.getElementById('time-display'),
+                statusMessage: document.getElementById('status-message'),
+                leaveTime: document.getElementById('leave-time'),
+                scheduledDepartureDisplay: document.getElementById('scheduled-departure-display'),
+                actualDepartureDisplay: document.getElementById('actual-departure-display'),
+                trafficFactorDisplay: document.getElementById('traffic-factor-display'),
+                totalTravelTime: document.getElementById('total-travel-time'),
+                transitDelayDisplay: document.getElementById('transit-delay-display'),
+                routeDistanceDisplay: document.getElementById('route-distance-display'),
+                geoButton: document.getElementById('geo-button'),
+                geoStatus: document.getElementById('geo-status'),
+                liveUpdateButton: document.getElementById('live-update-button'),
+                mapsLink: document.getElementById('maps-link'),
+                currentTimeDisplay: document.getElementById('current-time-display'),
+                dayOfWeekDisplay: document.getElementById('day-of-week-display'),
+                futureTripsList: document.getElementById('future-trips-list'),
+                
+                // Saved Origin Form
+                newOriginName: document.getElementById('new-origin-name'),
+                newOriginValue: document.getElementById('new-origin-value'),
+                addOriginButton: document.getElementById('add-origin-button'),
+
+                // Saved Destination Form Elements
+                newDestinationName: document.getElementById('new-destination-name'),
+                newDestinationValue: document.getElementById('new-destination-value'),
+                addDestinationButton: document.getElementById('add-destination-button'),
+
+                // New Trip Form
+                newTripDate: document.getElementById('new-trip-date'),
+                newTripTime: document.getElementById('new-trip-time'),
+                newTripTransport: document.getElementById('new-trip-transport'),
+                newTripDestination: document.getElementById('new-trip-destination'),
+                addTripButton: document.getElementById('add-trip-button'),
+            };
+
+            // --- 1. Data Persistence (localStorage) ---
+            let futureTrips = [];
+
+            function loadSettings() {
+                const stored = localStorage.getItem(STORAGE_KEY);
+                if (stored) {
+                    settings = JSON.parse(stored);
+                    els.transportType.value = settings.transportType || 'Train';
+                    els.scheduledDeparture.value = settings.scheduledDeparture || '08:00';
+                    els.travelTime.value = settings.travelTime || 30;
+                    els.bufferTime.value = settings.bufferTime || 10;
+                    els.routeDistance.value = settings.routeDistance || 20;
+                    els.departureDay.value = settings.departureDay || '0';
+                    settings.delayMinutes = settings.delayMinutes || 0;
+                    settings.trafficFactor = settings.trafficFactor || 0.0;
+                } else {
+                    settings = {
+                        transportType: 'Train', scheduledDeparture: '08:00', travelTime: 30, bufferTime: 10, routeDistance: 20,
+                        delayMinutes: 0, trafficFactor: 0.0, departureDay: '0', destination: 'Office'
+                    };
+                }
+                
+                const storedTrips = localStorage.getItem(FUTURE_TRIPS_KEY);
+                if (storedTrips) {
+                    futureTrips = JSON.parse(storedTrips);
+                }
+
+                const storedOrigins = localStorage.getItem(ORIGINS_KEY);
+                if (storedOrigins) {
+                    savedOrigins = JSON.parse(storedOrigins);
+                } else {
+                    savedOrigins = [
+                        { name: "Live GPS", value: "Awaiting GPS..." },
+                        { name: "Home Address", value: "1600 Amphitheatre Parkway, Mountain View, CA" }
+                    ];
+                }
+
+                const storedDestinations = localStorage.getItem(DESTINATIONS_KEY);
+                if (storedDestinations) {
+                    savedDestinations = JSON.parse(storedDestinations);
+                } else {
+                    savedDestinations = [
+                        { name: "Office", value: "345 Spear Street, San Francisco, CA" },
+                        { name: "Airport", value: "SFO International Airport" }
+                    ];
+                }
+                
+                // Set the correct selected values for both dropdowns
+                els.originSelect.value = settings.selectedOrigin || 'Awaiting GPS...';
+                els.destinationSelect.value = settings.selectedDestination || 'Office';
+
+                // Update the hidden inputs which hold the actual location value
+                updateOriginValue();
+                updateDestinationValue();
+            }
+
+            function saveSettings() {
+                // Update settings object from input fields
+                settings.transportType = els.transportType.value;
+                settings.scheduledDeparture = els.scheduledDeparture.value;
+                settings.travelTime = Number(els.travelTime.value);
+                settings.bufferTime = Number(els.bufferTime.value);
+                settings.routeDistance = Number(els.routeDistance.value);
+                settings.departureDay = els.departureDay.value;
+                
+                settings.selectedOrigin = els.originSelect.value;
+                settings.selectedDestination = els.destinationSelect.value;
+                settings.origin = els.originInput.value;
+                settings.destination = els.destinationInput.value;
+
+                // Save to browser's local storage
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+                localStorage.setItem(FUTURE_TRIPS_KEY, JSON.stringify(futureTrips));
+                localStorage.setItem(ORIGINS_KEY, JSON.stringify(savedOrigins));
+                localStorage.setItem(DESTINATIONS_KEY, JSON.stringify(savedDestinations));
+            }
+
+            // --- Origin Management UI ---
+
+            function renderOriginDropdown() {
+                els.originSelect.innerHTML = '';
+                
+                savedOrigins.forEach(origin => {
+                    const option = document.createElement('option');
+                    // OPTION VALUE IS THE LOCATION DATA (Address/Coords)
+                    option.value = origin.value; 
+                    option.textContent = origin.name;
+                    els.originSelect.appendChild(option);
+                });
+                
+                els.originSelect.value = settings.selectedOrigin || 'Awaiting GPS...';
+            }
+
+            // --- Destination Management UI ---
+            
+            function renderDestinationDropdown() {
+                els.destinationSelect.innerHTML = '';
+                
+                savedDestinations.forEach(destination => {
+                    const option = document.createElement('option');
+                    // OPTION VALUE IS THE LOCATION DATA (Address/Coords)
+                    option.value = destination.value;
+                    option.textContent = destination.name;
+                    els.destinationSelect.appendChild(option);
+                });
+                
+                // Select the user's last chosen destination
+                els.destinationSelect.value = settings.selectedDestination || 'Office';
+            }
+            
+            function updateDestinationValue() {
+                const selectedValue = els.destinationSelect.value;
+                
+                // Set the actual address/coordinates into the hidden input
+                els.destinationInput.value = selectedValue;
+                
+                saveSettings();
+            }
+
+
+            // Updates the hidden input field with the coordinates/address selected in the dropdown
+            function updateOriginValue() {
+                const selectedValue = els.originSelect.value;
+                
+                // Set to saved address or coordinates (this is the actual value for Maps)
+                els.originInput.value = selectedValue;
+                
+                if (selectedValue === 'Awaiting GPS...') {
+                    els.geoStatus.textContent = 'Click "Get Current GPS" to update.';
+                    els.geoButton.style.display = 'block';
+                } else if (selectedValue.includes(',')) { // Simple check for coordinates
+                    els.geoStatus.textContent = 'Using Saved Coordinates.';
+                    els.geoButton.style.display = 'none';
+                } else {
+                    els.geoStatus.textContent = 'Using Saved Address.';
+                    els.geoButton.style.display = 'none';
+                }
+                saveSettings();
+            }
+
+
+            // --- Real-Time Clock Function ---
+            function startClock() {
+                if (clockInterval) clearInterval(clockInterval);
+                
+                function updateClock() {
+                    const now = new Date();
+                    const timeString = now.toLocaleTimeString('en-US', {
+                        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+                    });
+                    els.currentTimeDisplay.textContent = timeString;
+                }
+                
+                updateClock();
+                clockInterval = setInterval(updateClock, 1000);
+            }
+            
+            // --- 2. Simulation Logic (Predictive and Current) ---
+
+            function simulateDelays(departureDay) {
+                const [depHour, depMin] = settings.scheduledDeparture.split(':').map(Number);
+                const targetHour = depHour;
+                
+                // 1. Simulate Transit Delay
+                let transitDelay = Math.floor(Math.random() * 21) - 5; 
+                if (Math.random() < 0.1) {
+                     transitDelay = Math.floor(Math.random() * 45) + 15;
+                }
+
+                // 2. Simulate Traffic Factor (Higher during rush hour)
+                let trafficFactor = Math.floor(Math.random() * 21) / 100;
+                
+                // Apply RUSH HOUR logic (7 AM - 9 AM) for increased traffic factor
+                if (targetHour >= 7 && targetHour <= 9) {
+                    trafficFactor += Math.floor(Math.random() * 26) / 100;
+                    trafficFactor = Math.min(trafficFactor, 0.5);
+                }
+                
+                return { delayMinutes: transitDelay, trafficFactor: trafficFactor };
+            }
+
+
+            function calculateDepartureTime(isAlertCheck = false, tripData = null) {
+                let currentSettings = settings;
+                let dayLabel = els.departureDay.options[els.departureDay.selectedIndex].text;
+                let finalTransport = currentSettings.transportType;
+                
+                // Logic to override settings if checking a Future Trip Alert
+                if (isAlertCheck && tripData) {
+                    currentSettings = { 
+                        ...settings, 
+                        scheduledDeparture: tripData.time,
+                        destination: tripData.destination,
+                        transportType: tripData.transport,
+                        departureDay: tripData.dayOffset.toString(),
+                    };
+                    dayLabel = `${tripData.dayOffset === 1 ? 'Tomorrow' : 'Day After'} (${tripData.date})`;
+                    finalTransport = tripData.transport;
+                }
+
+                const { scheduledDeparture, travelTime, bufferTime, departureDay, routeDistance } = currentSettings;
+                
+                // 🛑 VALIDATION: Check if both origin and destination have usable values
+                const originResolved = els.originInput.value.trim();
+                const destinationResolved = els.destinationInput.value.trim();
+                const isReady = originResolved && originResolved !== 'Awaiting GPS...' && destinationResolved;
+
+                if (!isAlertCheck && !isReady) {
+                    // Display placeholder status if location is missing
+                    renderUI({
+                        leaveTime: '--:--',
+                        actualDepartureTime: '--:--',
+                        message: 'Select Origin and Destination to Calculate.',
+                        status: 'setup',
+                        shadowClass: 'bg-gray-500 shadow-gray-400/50',
+                        trafficFactorDisplay: '0%',
+                        totalTravelTime: '0 min',
+                        transitDelayDisplay: '+0 min',
+                        routeDistanceDisplay: `${els.routeDistance.value} KM`,
+                        dayOfWeek: `${dayLabel}`,
+                        urgent: false,
+                    });
+                    return; // Stop calculation here
+                }
+
+
+                // 🛑 ONLY RE-SIMULATE IF THE USER CLICKS THE BUTTON OR IT'S A FUTURE CHECK
+                let delayMinutes, trafficFactor;
+                if (isAlertCheck || window.shouldSimulate) {
+                    const delayData = simulateDelays(departureDay);
+                    delayMinutes = delayData.delayMinutes;
+                    trafficFactor = delayData.trafficFactor;
+                    
+                    // Save the new simulated values
+                    if (!isAlertCheck) {
+                        settings.delayMinutes = delayMinutes;
+                        settings.trafficFactor = trafficFactor;
+                        saveSettings();
+                        window.shouldSimulate = false; // Reset the flag after simulation
+                    }
+                } else {
+                    // Use the last saved values if not explicitly updating
+                    delayMinutes = settings.delayMinutes;
+                    trafficFactor = settings.trafficFactor;
+                }
+                
+                
+                const effectiveTravelTime = Math.round(travelTime * (1 + trafficFactor));
+                const totalTravelMins = effectiveTravelTime + bufferTime;
+
+                const [depHour, depMin] = scheduledDeparture.split(':').map(Number);
+                const targetDepartureMins = (depHour * 60) + depMin;
+
+                const actualDepartureMins = targetDepartureMins + delayMinutes;
+                const leaveHomeMins = actualDepartureMins - totalTravelMins;
+
+                const formatMinsToTime = (totalMins) => {
+                    const minsInDay = 1440;
+                    const adjustedMins = (totalMins % minsInDay + minsInDay) % minsInDay; 
+                    const h = String(Math.floor(adjustedMins / 60)).padStart(2, '0');
+                    const m = String(adjustedMins % 60).padStart(2, '0');
+                    return `${h}:${m}`;
+                };
+
+                // Determine Status
+                let status;
+                let message;
+                let shadowClass;
+                let urgent = false;
+                
+                if (isAlertCheck) {
+                    const statusType = trafficFactor > 0.25 ? 'traffic' : (delayMinutes > 10 ? 'delayed' : 'on-time');
+                    const delayText = delayMinutes > 0 ? `+${delayMinutes}` : '0';
+                    const trafficText = Math.round(trafficFactor * 100);
+                    
+                    return { 
+                        statusType,
+                        leaveTime: formatMinsToTime(leaveHomeMins),
+                        message: `PREDICTION: ${finalTransport} delay ${delayText} min, Traffic ${trafficText}%.`,
+                        destination: currentSettings.destination,
+                        time: scheduledDeparture,
+                        transport: finalTransport,
+                        dayOffset: Number(departureDay),
+                        dayLabel: dayLabel,
+                    };
+                }
+
+
+                // --- UI Rendering Logic (Only for main screen) ---
+
+                if (trafficFactor > 0.3 && delayMinutes >= 0) {
+                    status = 'traffic';
+                    message = `TRAFFIC: Expect ${effectiveTravelTime - travelTime} min delay. Leave early!`;
+                    shadowClass = 'bg-orange-600 shadow-orange-500/50 animate-pulse-custom border-4 border-white';
+                    urgent = true;
+                } else if (delayMinutes < 0) {
+                    status = 'early';
+                    message = `HURRY! ${finalTransport} is ${Math.abs(delayMinutes)} min EARLY!`;
+                    shadowClass = 'bg-red-800 shadow-red-700/50 animate-pulse-custom border-4 border-white';
+                    urgent = true;
+                } else if (delayMinutes > 15) {
+                    status = 'delayed';
+                    message = `Major delay (+${delayMinutes} min). Leave later.`;
+                    shadowClass = 'bg-red-600 shadow-red-500/50';
+                } else {
+                    status = 'on-time';
+                    message = `${dayLabel} Status: All Clear!`;
+                    shadowClass = 'bg-green-600 shadow-green-400/50';
+                }
+                
+                // Determine Day of Week
+                const now = new Date();
+                now.setDate(now.getDate() + Number(departureDay));
+                const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' });
+
+                renderUI({
+                    leaveTime: formatMinsToTime(leaveHomeMins),
+                    actualDepartureTime: formatMinsToTime(actualDepartureMins),
+                    message: message,
+                    status: status,
+                    shadowClass: shadowClass,
+                    trafficFactorDisplay: `${Math.round(trafficFactor * 100)}%`,
+                    totalTravelTime: `${effectiveTravelTime} min`,
+                    transitDelayDisplay: `${delayMinutes > 0 ? '+' : ''}${delayMinutes} min`,
+                    routeDistanceDisplay: `${routeDistance} KM`,
+                    dayOfWeek: `${dayLabel} (${dayOfWeek})`,
+                    urgent: urgent,
+                });
+                
+                // Update Google Maps link after rendering UI and fetching data
+                updateMapsLink(); 
+            }
+            
+            // Maps Link Update Function
+            function updateMapsLink() {
+                // 🛑 Use the resolved values from the hidden inputs
+                const originValue = els.originInput.value.trim(); 
+                const destinationValue = els.destinationInput.value.trim();
+                const transportType = els.transportType.value;
+                
+                if (originValue && destinationValue && originValue !== 'Awaiting GPS...') {
+                    // Check if origin is GPS coordinates or a street address
+                    const travelMode = transportType === 'Flight' ? 'driving' : transportType.toLowerCase();
+                    
+                    // The core fix: use the resolved originValue, which is the actual coords/address
+                    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originValue)}&destination=${encodeURIComponent(destinationValue)}&travelmode=${travelMode}&dir_action=navigate&traffic=true`;
+                    
+                    els.mapsLink.href = mapsUrl;
+                    els.mapsLink.style.display = 'inline-flex';
+                } else {
+                    els.mapsLink.href = '#';
+                    // Hide the link if crucial data is missing or awaiting GPS
+                    els.mapsLink.style.display = 'none';
+                }
+            }
+
+
+            function renderUI(data) {
+                // Apply color class and animation
+                els.timeDisplay.className = `time-display w-full p-8 rounded-xl text-white shadow-2xl mb-8 flex flex-col justify-center items-center ${data.shadowClass}`;
+                
+                // Toggle urgent pulse class
+                if (data.urgent) {
+                    els.timeDisplay.classList.add('animate-pulse-custom');
+                } else {
+                    els.timeDisplay.classList.remove('animate-pulse-custom');
+                }
+
+                // Update text fields
+                els.statusMessage.textContent = data.message;
+                els.leaveTime.textContent = data.leaveTime;
+                els.actualDepartureDisplay.textContent = data.actualDepartureTime;
+                els.scheduledDepartureDisplay.textContent = settings.scheduledDeparture;
+                els.trafficFactorDisplay.textContent = data.trafficFactorDisplay;
+                els.totalTravelTime.textContent = data.totalTravelTime;
+                els.transitDelayDisplay.textContent = data.transitDelayDisplay;
+                // Get the distance directly from the input field value
+                els.routeDistanceDisplay.textContent = `${els.routeDistance.value} KM`; 
+                els.dayOfWeekDisplay.textContent = data.dayOfWeek;
+            }
+
+            // --- 3. Live Update Handlers ---
+
+            function fetchLiveUpdates() {
+                // 🛑 SET FLAG: Tell the calculator to re-simulate new random values
+                window.shouldSimulate = true; 
+                calculateDepartureTime();
+                renderFutureTrips(); // Check and display future trip alerts
+            }
+
+            function startAutoUpdate() {
+                if (autoUpdateInterval) clearInterval(autoUpdateInterval);
+                // We keep the interval for future trips check, but not for live simulation
+                autoUpdateInterval = setInterval(() => {
+                    renderFutureTrips(); // Check future trip alerts every interval
+                }, 30000);
+            }
+
+            // --- 4. Geolocation ---
+
+            function getCurrentLocation() {
+                // Only run if LIVE_GPS is the selected option
+                if (els.originSelect.value !== 'Awaiting GPS...') {
+                    // Force the dropdown to select the LIVE_GPS option if they click the button
+                    els.originSelect.value = 'Awaiting GPS...'; 
+                }
+
+                if (!navigator.geolocation) {
+                    els.geoStatus.textContent = 'Error: Geolocation not supported.';
+                    return;
+                }
+                
+                els.geoStatus.textContent = 'Locating...';
+                els.geoButton.disabled = true;
+                els.geoButton.textContent = '...';
+
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        const locationString = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+                        
+                        // Update the hidden input with the new GPS coordinates
+                        els.originInput.value = locationString; 
+
+                        els.geoStatus.textContent = 'Live GPS Coordinates Acquired.';
+                        els.geoButton.textContent = 'Live';
+                        els.geoButton.className = 'ml-2 px-3 py-1 text-sm rounded-lg bg-green-500 text-white transition duration-150';
+                        els.geoButton.disabled = false;
+                        
+                        saveSettings();
+                        calculateDepartureTime();
+                        updateMapsLink(); // Update the map link with new coordinates
+                    },
+                    (error) => {
+                        let errorMessage;
+                        if (error.code === 1) {
+                            errorMessage = 'Error: Permission Denied. Check browser settings.';
+                        } else if (error.code === 3) {
+                            errorMessage = 'Error: Timeout. Check connection. (Ensure Wi-Fi is on)';
+                        } else {
+                            errorMessage = 'Error: Geolocation failed. Try selecting a saved location.';
+                        }
+                        
+                        els.geoStatus.textContent = errorMessage;
+                        els.geoButton.textContent = 'Error';
+                        els.geoButton.className = 'ml-2 px-3 py-1 text-sm rounded-lg bg-red-500 text-white transition duration-150';
+                        els.geoButton.disabled = false;
+                    },
+                    { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
+                );
+            }
+
+            // --- 5. Future Trip Manager ---
+
+            function addFutureTrip() {
+                const date = els.newTripDate.value;
+                const time = els.newTripTime.value;
+                const transport = els.newTripTransport.value;
+                const destination = els.newTripDestination.value;
+
+                if (!date || !time || !destination) {
+                    alert('Please fill all fields for the trip.');
+                    return;
+                }
+
+                const newTrip = { date, time, transport, destination, id: Date.now() };
+                futureTrips.push(newTrip);
+                
+                // Clear form and save
+                els.newTripDate.value = '';
+                els.newTripDestination.value = '';
+                saveSettings();
+                renderFutureTrips();
+            }
+
+            function deleteTrip(id) {
+                futureTrips = futureTrips.filter(trip => trip.id !== id);
+                saveSettings();
+                renderFutureTrips();
+            }
+            
+            function renderFutureTrips() {
+                els.futureTripsList.innerHTML = '';
+                
+                if (futureTrips.length === 0) {
+                    els.futureTripsList.innerHTML = '<p id="no-trips-message" class="text-gray-500 text-sm">No future trips saved.</p>';
+                    return;
+                }
+                
+                const now = new Date();
+                
+                futureTrips.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                futureTrips.forEach(trip => {
+                    const tripDate = new Date(trip.date);
+                    const diffDays = Math.ceil((tripDate - now) / (1000 * 60 * 60 * 24));
+                    let alertStatus = 'bg-gray-100';
+                    let statusText = `${diffDays} days away.`;
+                    
+                    if (diffDays === 1 || diffDays === 2) {
+                        // Check for pre-departure alert status
+                        const tripDayOffset = diffDays;
+                        const alertData = calculateDepartureTime(true, { 
+                            date: trip.date, 
+                            time: trip.time, 
+                            transport: trip.transport, 
+                            destination: trip.destination,
+                            dayOffset: tripDayOffset 
+                        });
+                        
+                        alertStatus = alertData.statusType === 'traffic' || alertData.statusType === 'delayed'
+                            ? 'bg-red-100 border-red-400' 
+                            : 'bg-yellow-100 border-yellow-400';
+
+                        statusText = `ALERT! ${alertData.message} | Leave by ${alertData.leaveTime} on ${trip.time}.`;
+                        
+                    } else if (diffDays <= 0) {
+                        alertStatus = 'bg-green-100 border-green-400';
+                        statusText = 'Completed or Today.';
+                    }
+
+                    const tripEl = document.createElement('div');
+                    tripEl.className = `p-3 rounded-lg border flex justify-between items-center ${alertStatus}`;
+                    tripEl.innerHTML = `
+                        <div>
+                            <p class="font-semibold text-gray-800">${trip.transport} to ${trip.destination}</p>
+                            <p class="text-xs text-gray-600">${trip.date} @ ${trip.time}</p>
+                            <p class="text-xs font-bold text-red-700 mt-1">${statusText}</p>
+                        </div>
+                        <button class="delete-trip text-red-500 hover:text-red-700 transition" data-id="${trip.id}">
+                            &times;
+                        </button>
+                    `;
+                    els.futureTripsList.appendChild(tripEl);
+                });
+
+                document.querySelectorAll('.delete-trip').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const id = Number(e.target.dataset.id);
+                        deleteTrip(id);
+                    });
+                });
+            }
+            
+            // --- 6. Saved Origin Manager ---
+            function renderSavedOrigins() {
+                renderOriginDropdown();
+                // Attach event listener after rendering
+                els.originSelect.addEventListener('change', () => {
+                    updateOriginValue();
+                    calculateDepartureTime();
+                    updateMapsLink(); // Call map update on origin change
+                });
+            }
+
+            function addOrigin() {
+                const name = els.newOriginName.value.trim();
+                const value = els.newOriginValue.value.trim(); // This is the address/coords
+
+                if (!name || !value) {
+                    alert('Please provide both a name and a location/address.');
+                    return;
+                }
+                
+                // Add the new origin to the list (value is the actual location data)
+                savedOrigins.push({ name: name, value: value });
+                
+                // Select the new origin by default
+                settings.selectedOrigin = value; 
+                
+                // Clear inputs and save
+                els.newOriginName.value = '';
+                els.newOriginValue.value = '';
+                
+                saveSettings();
+                renderSavedOrigins();
+                calculateDepartureTime();
+            }
+
+            // --- 7. Saved Destination Manager ---
+            
+            function renderSavedDestinations() {
+                renderDestinationDropdown();
+                els.destinationSelect.addEventListener('change', () => {
+                    updateDestinationValue();
+                    calculateDepartureTime();
+                    updateMapsLink();
+                });
+            }
+            
+            function addDestination() {
+                const name = els.newDestinationName.value.trim();
+                const value = els.newDestinationValue.value.trim(); // This is the address/coords
+
+                if (!name || !value) {
+                    alert('Please provide both a name and a location/address.');
+                    return;
+                }
+                
+                // Add the new destination to the list (value is the actual location data)
+                savedDestinations.push({ name: name, value: value });
+                
+                // Select the new destination by default
+                settings.selectedDestination = value; 
+                
+                // Clear inputs and save
+                els.newDestinationName.value = '';
+                els.newDestinationValue.value = '';
+                
+                saveSettings();
+                renderSavedDestinations();
+                calculateDepartureTime();
+            }
+
+
+            // --- Initialization ---
+
+            function initApp() {
+                loadSettings();
+                renderSavedOrigins(); // Initialize origin dropdown and listeners
+                renderSavedDestinations(); // Initialize destination dropdown and listeners
+                calculateDepartureTime();
+                
+                // Event listener for user inputs (uses debounce logic implicitly)
+                const inputFields = document.querySelectorAll('input[type="time"], input[type="number"], input[type="text"], select');
+                inputFields.forEach(input => input.addEventListener('input', () => {
+                    saveSettings();
+                    calculateDepartureTime();
+                    updateMapsLink(); // Call map update on destination/transport change
+                }));
+
+                // Button handlers
+                els.liveUpdateButton.addEventListener('click', fetchLiveUpdates);
+                els.geoButton.addEventListener('click', getCurrentLocation);
+                els.addTripButton.addEventListener('click', addFutureTrip);
+                els.addOriginButton.addEventListener('click', addOrigin); // Save Origin Button
+                els.addDestinationButton.addEventListener('click', addDestination); // 🛑 NEW: Save Destination Button
+                
+                // Start the automatic update cycle
+                startAutoUpdate();
+                startClock();
+                
+                // Initial live data fetch
+                fetchLiveUpdates();
+            }
+
+            initApp();
+        });
+    </script>
+</body>
+</html>
